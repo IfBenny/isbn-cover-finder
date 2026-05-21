@@ -2,37 +2,167 @@
 <html lang="it">
 <head>
   <meta charset="UTF-8">
-  <title>ISBN Cover Finder – Avanzato</title>
+  <title>ISBN / ISSN / ISMN / ISRC Cover Finder</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <style>
-    body { font-family: Arial; max-width: 700px; margin: 40px auto; }
-    input { width: 100%; padding: 12px; font-size: 18px; }
-    button { margin-top: 10px; padding: 12px; font-size: 18px; cursor: pointer; }
-    #result { margin-top: 20px; font-size: 18px; }
-    img { margin-top: 20px; max-width: 200px; display: block; }
-    .links a { display: block; margin-top: 5px; }
+    body {
+      font-family: Arial;
+      max-width: 700px;
+      margin: 20px auto;
+      padding: 10px;
+      line-height: 1.5;
+    }
+
+    input {
+      width: 100%;
+      padding: 14px;
+      font-size: 18px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      margin-top: 12px;
+      padding: 14px;
+      font-size: 18px;
+      cursor: pointer;
+      width: 100%;
+      border-radius: 8px;
+      border: none;
+      background: #0078ff;
+      color: white;
+    }
+
+    #copyBtn {
+      background: #00a82d;
+      margin-top: 10px;
+      display: none;
+    }
+
+    #result {
+      margin-top: 20px;
+      font-size: 18px;
+    }
+
+    img {
+      margin-top: 20px;
+      max-width: 100%;
+      border-radius: 8px;
+    }
+
+    .links a {
+      display: block;
+      margin-top: 8px;
+      font-size: 18px;
+    }
+
+    #history {
+      margin-top: 30px;
+      padding-top: 10px;
+      border-top: 1px solid #ccc;
+    }
+
+    .history-item {
+      padding: 8px;
+      background: #f2f2f2;
+      margin-top: 6px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
 
-  <h2>ISBN Cover Finder – Avanzato</h2>
-  <input id="isbn" placeholder="Inserisci ISBN (es. 9788822619813)">
-  <button onclick="searchCover()">Cerca Copertina</button>
+  <h2>ISBN / ISSN / ISMN / ISRC Cover Finder</h2>
+
+  <input id="code" placeholder="Inserisci ISBN, ISSN, ISMN o ISRC">
+  <button onclick="searchCode()">Cerca Copertina</button>
+  <button id="copyBtn" onclick="copyURL()">Copia URL Copertina</button>
 
   <div id="result"></div>
 
-  <script>
-    async function searchCover() {
-      const isbn = document.getElementById('isbn').value.trim();
-      const result = document.getElementById('result');
-      result.innerHTML = "🔍 Cerco la copertina...";
+  <div id="history">
+    <h3>Cronologia ricerche</h3>
+    <div id="historyList"></div>
+    <button onclick="clearHistory()" style="background:#ff4444;margin-top:10px;">Cancella cronologia</button>
+  </div>
 
-      if (!isbn) {
-        result.innerHTML = "Inserisci un ISBN valido.";
+  <script>
+    let lastCoverURL = "";
+
+    function saveHistory(code) {
+      let history = JSON.parse(localStorage.getItem("history") || "[]");
+      if (!history.includes(code)) {
+        history.unshift(code);
+        if (history.length > 20) history.pop();
+        localStorage.setItem("history", JSON.stringify(history));
+      }
+      loadHistory();
+    }
+
+    function loadHistory() {
+      let history = JSON.parse(localStorage.getItem("history") || "[]");
+      let html = "";
+      history.forEach(item => {
+        html += `<div class="history-item" onclick="loadFromHistory('${item}')">${item}</div>`;
+      });
+      document.getElementById("historyList").innerHTML = html;
+    }
+
+    function clearHistory() {
+      localStorage.removeItem("history");
+      loadHistory();
+    }
+
+    function loadFromHistory(code) {
+      document.getElementById("code").value = code;
+      searchCode();
+    }
+
+    function normalizeISMN(code) {
+      if (code.startsWith("M")) {
+        return "9790" + code.substring(1).replace(/-/g, "");
+      }
+      return code;
+    }
+
+    async function searchCode() {
+      const input = document.getElementById('code').value.trim();
+      const result = document.getElementById('result');
+      const copyBtn = document.getElementById('copyBtn');
+
+      result.innerHTML = "🔍 Cerco...";
+      copyBtn.style.display = "none";
+      lastCoverURL = "";
+
+      if (!input) {
+        result.innerHTML = "Inserisci un codice valido.";
         return;
       }
 
-      // 1) GOOGLE BOOKS tramite proxy CORS
-      const googleURL = `https://corsproxy.io/?https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`;
+      saveHistory(input);
+
+      let code = input.replace(/ /g, "");
+
+      if (/^M/.test(code)) {
+        code = normalizeISMN(code);
+      }
+
+      if (/^[A-Z]{2}-/.test(code)) {
+        result.innerHTML = `
+          <p>ℹ️ Questo è un ISRC (codice audio).</p>
+          <p>Non esistono copertine ufficiali, ma puoi cercare qui:</p>
+          <div class="links">
+            <a href="https://www.youtube.com/results?search_query=${code}" target="_blank">YouTube</a>
+            <a href="https://open.spotify.com/search/${code}" target="_blank">Spotify</a>
+            <a href="https://music.apple.com/search?term=${code}" target="_blank">Apple Music</a>
+          </div>
+        `;
+        return;
+      }
+
+      const googleURL = `https://corsproxy.io/?https://www.googleapis.com/books/v1/volumes?q=${code}`;
 
       try {
         const res = await fetch(googleURL);
@@ -40,52 +170,47 @@
 
         if (data.items && data.items[0].volumeInfo.imageLinks) {
           const cover = data.items[0].volumeInfo.imageLinks.thumbnail;
+          lastCoverURL = cover;
+
           result.innerHTML = `
             <p>✔ Copertina trovata tramite <b>Google Books</b>:</p>
             <a href="${cover}" target="_blank">${cover}</a>
             <img src="${cover}">
-            ${extraLinks(isbn)}
           `;
+
+          copyBtn.style.display = "block";
           return;
         }
-      } catch (e) {
-        console.log("Errore Google Books:", e);
-      }
+      } catch (e) {}
 
-      // 2) OPENLIBRARY FALLBACK
-      const openLibURL = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
-
+      const openLibURL = `https://covers.openlibrary.org/b/isbn/${code}-L.jpg`;
       const exists = await fetch(openLibURL).then(r => r.ok);
 
       if (exists) {
+        lastCoverURL = openLibURL;
+
         result.innerHTML = `
           <p>✔ Copertina trovata tramite <b>OpenLibrary</b>:</p>
           <a href="${openLibURL}" target="_blank">${openLibURL}</a>
           <img src="${openLibURL}">
-          ${extraLinks(isbn)}
         `;
+
+        copyBtn.style.display = "block";
         return;
       }
 
-      // 3) NESSUNA COPERTINA TROVATA
       result.innerHTML = `
         <p>❌ Nessuna copertina trovata automaticamente.</p>
-        <p>Ecco i link rapidi per cercarla manualmente:</p>
-        ${extraLinks(isbn)}
       `;
     }
 
-    function extraLinks(isbn) {
-      return `
-        <div class="links">
-          <a href="https://www.google.com/search?tbm=isch&q=${isbn}" target="_blank">🔎 Google Immagini</a>
-          <a href="https://isbnsearch.org/isbn/${isbn}" target="_blank">📚 ISBNsearch.org</a>
-          <a href="https://www.ibs.it/search/?ts=as&query=${isbn}" target="_blank">🏪 IBS.it</a>
-          <a href="https://www.worldcat.org/isbn/${isbn}" target="_blank">🌍 WorldCat</a>
-          <a href="https://www.amazon.it/s?k=${isbn}" target="_blank">🛒 Amazon (solo ricerca)</a>
-        </div>
-      `;
+    function copyURL() {
+      if (!lastCoverURL) return;
+      navigator.clipboard.writeText(lastCoverURL);
+      alert("URL copiato negli appunti!");
     }
+
+    loadHistory();
   </script>
 
 </body>
