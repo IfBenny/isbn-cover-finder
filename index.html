@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="UTF-8">
-  <title>ISBN Cover Finder (Avanzato)</title>
+  <title>ISBN Cover Finder – Avanzato</title>
   <style>
     body { font-family: Arial; max-width: 700px; margin: 40px auto; }
     input { width: 100%; padding: 12px; font-size: 18px; }
@@ -23,4 +23,70 @@
   <script>
     async function searchCover() {
       const isbn = document.getElementById('isbn').value.trim();
-      const
+      const result = document.getElementById('result');
+      result.innerHTML = "🔍 Cerco la copertina...";
+
+      if (!isbn) {
+        result.innerHTML = "Inserisci un ISBN valido.";
+        return;
+      }
+
+      // 1) GOOGLE BOOKS tramite proxy CORS
+      const googleURL = `https://corsproxy.io/?https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`;
+
+      try {
+        const res = await fetch(googleURL);
+        const data = await res.json();
+
+        if (data.items && data.items[0].volumeInfo.imageLinks) {
+          const cover = data.items[0].volumeInfo.imageLinks.thumbnail;
+          result.innerHTML = `
+            <p>✔ Copertina trovata tramite <b>Google Books</b>:</p>
+            <a href="${cover}" target="_blank">${cover}</a>
+            <img src="${cover}">
+            ${extraLinks(isbn)}
+          `;
+          return;
+        }
+      } catch (e) {
+        console.log("Errore Google Books:", e);
+      }
+
+      // 2) OPENLIBRARY FALLBACK
+      const openLibURL = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
+
+      const exists = await fetch(openLibURL).then(r => r.ok);
+
+      if (exists) {
+        result.innerHTML = `
+          <p>✔ Copertina trovata tramite <b>OpenLibrary</b>:</p>
+          <a href="${openLibURL}" target="_blank">${openLibURL}</a>
+          <img src="${openLibURL}">
+          ${extraLinks(isbn)}
+        `;
+        return;
+      }
+
+      // 3) NESSUNA COPERTINA TROVATA
+      result.innerHTML = `
+        <p>❌ Nessuna copertina trovata automaticamente.</p>
+        <p>Ecco i link rapidi per cercarla manualmente:</p>
+        ${extraLinks(isbn)}
+      `;
+    }
+
+    function extraLinks(isbn) {
+      return `
+        <div class="links">
+          <a href="https://www.google.com/search?tbm=isch&q=${isbn}" target="_blank">🔎 Google Immagini</a>
+          <a href="https://isbnsearch.org/isbn/${isbn}" target="_blank">📚 ISBNsearch.org</a>
+          <a href="https://www.ibs.it/search/?ts=as&query=${isbn}" target="_blank">🏪 IBS.it</a>
+          <a href="https://www.worldcat.org/isbn/${isbn}" target="_blank">🌍 WorldCat</a>
+          <a href="https://www.amazon.it/s?k=${isbn}" target="_blank">🛒 Amazon (solo ricerca)</a>
+        </div>
+      `;
+    }
+  </script>
+
+</body>
+</html>
