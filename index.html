@@ -107,4 +107,142 @@
       history.forEach(item => {
         html += `<div class="history-item" onclick="loadFromHistory('${item}')">${item}</div>`;
       });
-      document
+      document.getElementById("historyList").innerHTML = html;
+    }
+
+    function clearHistory() {
+      localStorage.removeItem("history");
+      loadHistory();
+    }
+
+    function loadFromHistory(code) {
+      document.getElementById("code").value = code;
+      searchCode();
+    }
+
+    function normalizeISMN(code) {
+      if (code.startsWith("M")) {
+        return "9790" + code.substring(1).replace(/-/g, "");
+      }
+      return code;
+    }
+
+    function extraLinks(code) {
+      return `
+        <div class="links">
+          <h3>Link rapidi</h3>
+          <a href="https://www.google.com/search?tbm=isch&q=${code}" target="_blank">🔎 Google Immagini</a>
+          <a href="https://isbnsearch.org/isbn/${code}" target="_blank">📚 ISBNsearch.org</a>
+          <a href="https://www.ibs.it/search/?ts=as&query=${code}" target="_blank">🏪 IBS.it</a>
+          <a href="https://www.worldcat.org/search?q=${code}" target="_blank">🌍 WorldCat</a>
+          <a href="https://www.amazon.it/s?k=${code}" target="_blank">🛒 Amazon</a>
+        </div>
+      `;
+    }
+
+    async function searchCode() {
+      const input = document.getElementById('code').value.trim();
+      const result = document.getElementById('result');
+      const copyBtn = document.getElementById('copyBtn');
+
+      result.innerHTML = "🔍 Cerco...";
+      copyBtn.style.display = "none";
+      lastCoverURL = "";
+
+      if (!input) {
+        result.innerHTML = "Inserisci un codice valido.";
+        return;
+      }
+
+      saveHistory(input);
+
+      let code = input.replace(/ /g, "");
+
+      if (/^M/.test(code)) {
+        code = normalizeISMN(code);
+      }
+
+      if (/^[A-Z]{2}-/.test(code)) {
+        result.innerHTML = `
+          <p>ℹ️ Questo è un ISRC (codice audio).</p>
+          <p>Non esistono copertine ufficiali, ma puoi cercare qui:</p>
+          <div class="links">
+            <a href="https://www.youtube.com/results?search_query=${code}" target="_blank">YouTube</a>
+            <a href="https://open.spotify.com/search/${code}" target="_blank">Spotify</a>
+            <a href="https://music.apple.com/search?term=${code}" target="_blank">Apple Music</a>
+          </div>
+        `;
+        return;
+      }
+
+      const googleURL = `https://corsproxy.io/?https://www.googleapis.com/books/v1/volumes?q=isbn:${code}`;
+
+      try {
+        const res = await fetch(googleURL);
+        const data = await res.json();
+
+        if (data.items && data.items[0].volumeInfo.imageLinks) {
+          const cover = data.items[0].volumeInfo.imageLinks.thumbnail;
+          lastCoverURL = cover;
+
+          result.innerHTML = `
+            <p>✔ Copertina trovata tramite <b>Google Books</b>:</p>
+            <a href="${cover}" target="_blank">${cover}</a>
+            <img src="${cover}">
+            ${extraLinks(code)}
+          `;
+
+          copyBtn.style.display = "block";
+          return;
+        }
+
+        if (data.items && data.items[0].volumeInfo.title) {
+          const title = data.items[0].volumeInfo.title;
+          result.innerHTML = `
+            <p>❌ Nessuna copertina trovata, ma ho trovato il titolo:</p>
+            <b>${title}</b>
+            <p>Ecco le immagini trovate:</p>
+            <a href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent(title)}" target="_blank">🔎 Google Immagini</a>
+            ${extraLinks(title)}
+          `;
+          return;
+        }
+
+      } catch (e) {}
+
+      const openLibURL = `https://covers.openlibrary.org/b/isbn/${code}-L.jpg`;
+      const exists = await fetch(openLibURL).then(r => r.ok);
+
+      if (exists) {
+        lastCoverURL = openLibURL;
+
+        result.innerHTML = `
+          <p>✔ Copertina trovata tramite <b>OpenLibrary</b>:</p>
+          <a href="${openLibURL}" target="_blank">${openLibURL}</a>
+          <img src="${openLibURL}">
+          ${extraLinks(code)}
+        `;
+
+        copyBtn.style.display = "block";
+        return;
+      }
+
+      result.innerHTML = `
+        <p>❌ Nessuna copertina trovata automaticamente.</p>
+        <p>Prova con Google Immagini:</p>
+        <a href="https://www.google.com/search?tbm=isch&q=${code}" target="_blank">🔎 Google Immagini</a>
+        ${extraLinks(code)}
+      `;
+    }
+
+    function copyURL() {
+      if (!lastCoverURL) return;
+      navigator.clipboard.writeText(lastCoverURL);
+      alert("URL copiato negli appunti!");
+    }
+
+    loadHistory();
+  </script>
+
+</body>
+</html>
